@@ -15,9 +15,6 @@ function slugify(input: string) {
 
 export default function NewPostPage() {
   const supabase = createClient();
-  supabase.auth.getUser().then(({ data }) => {
-    console.log("USER:", data.user?.id, data.user?.email);
-  });
 
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
@@ -40,6 +37,18 @@ export default function NewPostPage() {
 
     setSaving(true);
 
+    // ✅ 1) récupérer l'utilisateur connecté
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+
+    if (userErr || !user) {
+      setSaving(false);
+      setMessage("❌ Tu dois être connecté pour créer un post.");
+      return;
+    }
+
     const payload = {
       title: title.trim(),
       slug: finalSlug,
@@ -49,7 +58,7 @@ export default function NewPostPage() {
     };
 
     const { error } = await supabase.from("posts").insert(payload);
-
+    
     setSaving(false);
 
     if (error) {
@@ -76,7 +85,6 @@ export default function NewPostPage() {
             value={title}
             onChange={(e) => {
               setTitle(e.target.value);
-              // si l'utilisateur n'a pas touché au slug, on ne le force pas
               if (!slug) setMessage(null);
             }}
             placeholder="Ex: Semaine 1 — Objectif Marathon Paris 2027"

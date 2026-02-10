@@ -16,7 +16,6 @@ export default function NewWorkoutPage() {
 
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderAt, setReminderAt] = useState(""); // datetime-local
-  const [reminderEmail, setReminderEmail] = useState("");
 
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -28,9 +27,13 @@ export default function NewWorkoutPage() {
     if (!date) return setMsg("❌ La date est obligatoire");
     if (!type.trim()) return setMsg("❌ Le type est obligatoire");
 
+    // Petit guard: si rappel activé, on veut une date/heure
+    if (reminderEnabled && !reminderAt) {
+      return setMsg("❌ La date/heure du rappel est obligatoire si le rappel est activé.");
+    }
+
     setSaving(true);
 
-    // ✅ Important pour RLS: on récupère l'user connecté (owner)
     const {
       data: { user },
       error: userErr,
@@ -42,7 +45,6 @@ export default function NewWorkoutPage() {
     }
 
     const payload = {
-      // ✅ Ajout requis si ta policy RLS vérifie auth.uid() = owner_user_id
       owner_user_id: user.id,
 
       date,
@@ -54,7 +56,10 @@ export default function NewWorkoutPage() {
       reminder_enabled: reminderEnabled,
       reminder_at:
         reminderEnabled && reminderAt ? new Date(reminderAt).toISOString() : null,
-      reminder_email: reminderEnabled ? reminderEmail.trim() || null : null,
+
+      // ✅ Tu envoies toujours au même email => on ne stocke plus d'email par workout
+      reminder_email: null,
+
       reminder_sent_at: null,
     };
 
@@ -72,7 +77,6 @@ export default function NewWorkoutPage() {
     setDurationMin("");
     setReminderEnabled(false);
     setReminderAt("");
-    setReminderEmail("");
   }
 
   return (
@@ -145,34 +149,24 @@ export default function NewWorkoutPage() {
         </label>
 
         {reminderEnabled && (
-          <>
-            <label style={{ display: "grid", gap: 6 }}>
-              <span>Date/heure du rappel</span>
-              <input
-                type="datetime-local"
-                value={reminderAt}
-                onChange={(e) => setReminderAt(e.target.value)}
-                style={{ padding: 12, border: "1px solid #ddd", borderRadius: 10 }}
-              />
-            </label>
-
-            <label style={{ display: "grid", gap: 6 }}>
-              <span>Email de rappel (optionnel)</span>
-              <input
-                type="email"
-                placeholder="ton@email.com"
-                value={reminderEmail}
-                onChange={(e) => setReminderEmail(e.target.value)}
-                style={{ padding: 12, border: "1px solid #ddd", borderRadius: 10 }}
-              />
-              <small style={{ opacity: 0.7 }}>
-                Si vide, l’Edge Function peut utiliser une valeur par défaut.
-              </small>
-            </label>
-          </>
+          <label style={{ display: "grid", gap: 6 }}>
+            <span>Date/heure du rappel</span>
+            <input
+              type="datetime-local"
+              value={reminderAt}
+              onChange={(e) => setReminderAt(e.target.value)}
+              style={{ padding: 12, border: "1px solid #ddd", borderRadius: 10 }}
+            />
+            <small style={{ opacity: 0.7 }}>
+              Heure locale (Europe/Paris). Stockée en UTC dans la base.
+            </small>
+          </label>
         )}
 
-        <button disabled={saving} style={{ padding: 12, borderRadius: 10, border: "1px solid #ddd" }}>
+        <button
+          disabled={saving}
+          style={{ padding: 12, borderRadius: 10, border: "1px solid #ddd" }}
+        >
           {saving ? "Enregistrement..." : "Créer"}
         </button>
 
