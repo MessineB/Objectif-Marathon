@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import HomeCalendarClient from "./home-calendar-client";
+import CountdownClient from "./modules/CountdownClient";
+
 
 function isAdminEmail(email?: string | null) {
   if (!email) return false;
@@ -25,11 +27,17 @@ export default async function HomePage() {
 
   const { data: posts, error: postsError } = await supabase
     .from("posts")
-    .select("id, title, slug, created_at, published_at, status") 
+    .select(`
+    id, title, slug, created_at, published_at, status,
+    post_media (
+      media:media_id ( id, path, alt )
+    )
+  `)
     .eq("status", "published")
     .order("published_at", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(5);
+
 
   if (postsError) {
     console.error("POSTS ERROR:", postsError);
@@ -131,6 +139,10 @@ export default async function HomePage() {
               <span>Focus</span>
               <strong>Endurance & constance</strong>
             </div>
+            <CountdownClient
+              label="Paris 2027"
+              targetIso="2027-04-11T08:00:00+02:00"
+            />
           </div>
         </aside>
 
@@ -165,29 +177,59 @@ export default async function HomePage() {
         </div>
 
         <div style={{ marginTop: 16, display: "grid", gap: 16 }}>
-          {(posts ?? []).map((p) => (
-            <Link
-              key={p.id}
-              href={`/posts/${p.slug}`}
-              style={{ textDecoration: "none", color: "inherit" }}
-            >
-              <article
-                style={{
-                  padding: 16,
-                  borderRadius: 16,
-                  border: "1px solid rgba(255,255,255,0.08)",
-                }}
-              >
-                <div style={{ fontSize: 18, fontWeight: 800 }}>{p.title}</div>
+          {(posts ?? []).map((p: any) => {
+            const firstMedia = p.post_media?.[0]?.media;
 
-                <div style={{ fontSize: 13, opacity: 0.7, marginTop: 6 }}>
-                  {new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" }).format(
-                    new Date(p.published_at ?? p.created_at)
+            const imgUrl = firstMedia
+              ? supabase.storage
+                .from("media")
+                .getPublicUrl(firstMedia.path).data.publicUrl
+              : null;
+
+            return (
+              <Link
+                key={p.id}
+                href={`/posts/${p.slug}`}
+                style={{ textDecoration: "none", color: "inherit" }}
+              >
+                <article
+                  style={{
+                    padding: 16,
+                    borderRadius: 16,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    display: "grid",
+                    gridTemplateColumns: imgUrl ? "140px 1fr" : "1fr",
+                    gap: 16,
+                    alignItems: "start",
+                  }}
+                >
+                  {imgUrl && (
+                    <img
+                      src={imgUrl}
+                      alt={firstMedia?.alt ?? ""}
+                      style={{
+                        width: 140,
+                        height: 90,
+                        objectFit: "cover",
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,0.08)",
+                      }}
+                    />
                   )}
-                </div>
-              </article>
-            </Link>
-          ))}
+
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 800 }}>{p.title}</div>
+
+                    <div style={{ fontSize: 13, opacity: 0.7, marginTop: 6 }}>
+                      {new Intl.DateTimeFormat("fr-FR", {
+                        dateStyle: "long",
+                      }).format(new Date(p.published_at ?? p.created_at))}
+                    </div>
+                  </div>
+                </article>
+              </Link>
+            );
+          })}
         </div>
       </section>
     </main>

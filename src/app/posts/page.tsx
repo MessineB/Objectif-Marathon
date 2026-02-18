@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 
+
+
 type PostListItem = {
   id: string;
   title: string;

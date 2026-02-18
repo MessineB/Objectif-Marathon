@@ -12,6 +12,42 @@ function slugify(input: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)+/g, "");
 }
+async function uploadAndLinkImage(supabase: any, postId: string, file: File) {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Seules les images sont autorisées.");
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error("Image trop lourde (max 5MB).");
+  }
+
+  const ext = file.name.split(".").pop() || "png";
+  const fileName = `${crypto.randomUUID()}.${ext}`;
+  const path = `posts/${postId}/${fileName}`;
+
+  // 1) upload vers Storage bucket "media"
+  const { error: upErr } = await supabase.storage
+    .from("media")
+    .upload(path, file, { contentType: file.type });
+
+  if (upErr) throw upErr;
+
+  // 2) insert dans public.media
+  const { data: mediaRow, error: mediaErr } = await supabase
+    .from("media")
+    .insert({ bucket: "media", path, alt: null })
+    .select("id")
+    .single();
+
+  if (mediaErr) throw mediaErr;
+
+  // 3) link dans public.post_media
+  const { error: linkErr } = await supabase.from("post_media").insert({
+    post_id: postId,
+    media_id: mediaRow.id,
+  });
+
+  if (linkErr) throw linkErr;
+}
 
 export default function NewPostPage() {
   const supabase = createClient();
@@ -20,6 +56,7 @@ export default function NewPostPage() {
   const [slug, setSlug] = useState("");
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<"draft" | "published">("draft");
+  const [files, setFiles] = useState<File[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -57,21 +94,41 @@ export default function NewPostPage() {
       published_at: status === "published" ? new Date().toISOString() : null,
     };
 
-    const { error } = await supabase.from("posts").insert(payload);
-    
-    setSaving(false);
+    const { data: created, error } = await supabase
+      .from("posts")
+      .insert(payload)
+      .select("id")
+      .single();
 
-    if (error) {
-      setMessage(`❌ ${error.message}`);
+    if (error || !created) {
+      setSaving(false);
+      setMessage(`❌ ${error?.message ?? "Erreur création post"}`);
       return;
     }
 
+    const postId = created.id;
+
+    try {
+      for (const file of files) {
+        await uploadAndLinkImage(supabase, postId, file);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setSaving(false);
+      setMessage(`⚠️ Post créé, mais une image a échoué: ${err.message}`);
+      return; 
+    }
+
+    setSaving(false);
     setMessage("✅ Post créé !");
-    // reset
+
+    
     setTitle("");
     setSlug("");
     setContent("");
     setStatus("draft");
+    setFiles([]);
+
   }
 
   return (
@@ -116,7 +173,12 @@ export default function NewPostPage() {
             <option value="published">Publié</option>
           </select>
         </label>
-
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          multiple
+          onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+        />
         <label style={{ display: "grid", gap: 6 }}>
           <span>Contenu</span>
           <textarea
